@@ -60,9 +60,9 @@ def run_experimenter():
 
 
 if __name__ == '__main__':
-    #download()
+    download()
     #create_spectrograms()
-    run_experimenter()
+    #run_experimenter()
     
     
     # Close the log file

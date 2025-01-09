@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import re
-from utils.download_extract import download_file
+from utils.download_extract import download_file, download_file_toGCP
 from src.data_processing import DatasetManager
 from google.cloud.storage import Client, transfer_manager
 
@@ -75,7 +75,7 @@ class BaseDataset(ABC):
             sufix_url = bearing[1]
             output_path = os.path.join('data/raw', dataset_name, bearing[0]+unit)
             if not os.path.exists(os.path.join(dirname, sufix_url)): 
-                null #download_file(url, sufix_url, output_path)                
+                download_file_toGCP(url, sufix_url, bucket_name="vittogcp-bucket01-ds", dataset_name=self.dataset_name)                
         print("Download finished.")
 
 
@@ -133,3 +133,5 @@ class BaseDataset(ABC):
     @property
     def annotation_file(self):
         return self._annotation_file
+
+
