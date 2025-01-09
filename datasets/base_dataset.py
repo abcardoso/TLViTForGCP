@@ -74,8 +74,8 @@ class BaseDataset(ABC):
         for bearing in list_of_bearings:
             sufix_url = bearing[1]
             output_path = os.path.join('data/raw', dataset_name, bearing[0]+unit)
-            if not os.path.exists(os.path.join(dirname, sufix_url)):
-                #download_file(url, sufix_url, output_path)                
+            if not os.path.exists(os.path.join(dirname, sufix_url)): 
+                null #download_file(url, sufix_url, output_path)                
         print("Download finished.")
 
 
