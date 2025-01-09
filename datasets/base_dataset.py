@@ -3,6 +3,7 @@ import numpy as np
 import re
 from utils.download_extract import download_file
 from src.data_processing import DatasetManager
+from google.cloud.storage import Client, transfer_manager
 
 from abc import ABC, abstractmethod
 
@@ -56,6 +57,27 @@ class BaseDataset(ABC):
             if not os.path.exists(os.path.join(dirname, sufix_url)):
                 download_file(url, sufix_url, output_path)                
         print("Download finished.")
+
+    def download_toGCP(self):
+        """ Download files from datasets website.
+        """
+        url = self._url
+        dirname = self.rawfilesdir
+        if not os.path.isdir(dirname):
+            os.mkdir(dirname)
+        print(f"Stating download of {self} dataset.")
+        list_of_bearings = self.list_of_bearings()
+        dataset_name = self.__class__.__name__.lower()
+        unit = '.mat'
+        if dataset_name == "paderborn":
+            unit = '.rar'
+        for bearing in list_of_bearings:
+            sufix_url = bearing[1]
+            output_path = os.path.join('data/raw', dataset_name, bearing[0]+unit)
+            if not os.path.exists(os.path.join(dirname, sufix_url)):
+                #download_file(url, sufix_url, output_path)                
+        print("Download finished.")
+
 
     def load_signal_by_path(self, filepath):
         signal, label = self._extract_data(filepath)
