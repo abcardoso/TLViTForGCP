@@ -103,8 +103,8 @@ soundfile==0.12.1
 soxr==0.3.7
 stack-data==0.6.3
 sympy==1.12.1
-tensorflow==2.16.1
-tensorflow-estimator>=2.16,<2.17
+tensorflow==2.15.0
+tensorflow-estimator==2.15.0
 tensorflow-io-gcs-filesystem==0.34.0
 termcolor==2.4.0
 threadpoolctl==3.5.0
