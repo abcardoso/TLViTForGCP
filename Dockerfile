@@ -1,4 +1,4 @@
-FROM python:3-slim
+FROM python:3.11-slim  # Use Python 3.11, compatible with numba
 
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pip requirements
+# Upgrade pip and install dependencies
 COPY requirements.txt .
 RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt
