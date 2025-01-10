@@ -2,7 +2,6 @@ import os
 import urllib.request
 from pyunpack import Archive
 from google.cloud import storage
-from google.cloud.storage import transfer_manager
 from utils.display import display_progress_bar
 
 def download_file(url_base, url_suffix, output_path):
@@ -102,7 +101,7 @@ def download_file_toGCP(url_base, url_suffix, bucket_name="vittogcp-bucket01-ds"
 
         # Stream the data from the URL and use a custom upload handler with concurrent chunking
         with urllib.request.urlopen(full_url) as response:
-            transfer_manager.upload_chunks_concurrently(
+            storage.transfer_manager.upload_chunks_concurrently(
                 blob, response, chunk_size=chunk_size, max_workers=workers
             )
 
