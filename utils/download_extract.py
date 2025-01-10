@@ -1,8 +1,10 @@
 import os
 import urllib.request
+from io import BytesIO
 from pyunpack import Archive
 from google.cloud import storage
 from utils.display import display_progress_bar
+from http.client import IncompleteRead
 
 def download_file(url_base, url_suffix, output_path):
     """
@@ -72,43 +74,64 @@ def generate_dynamic_blob_name(dataset_name, url_suffix):
     url_hash = hashlib.md5(url_suffix.encode()).hexdigest()[:8]  # Short hash for uniqueness
     return f"{dataset_name}/{timestamp}_{url_hash}"
 
-def download_file_toGCP(url_base, url_suffix, bucket_name="vittogcp-bucket01-ds", dataset_name="default_dataset", chunk_size=32 * 1024 * 1024, workers=8):
+def download_file_toGCP(
+    url_base, 
+    url_suffix, 
+    bucket_name="vittogcp-bucket01-ds", 
+    dataset_name="default_dataset", 
+    destination_name="destination_name", 
+    project_id="your-project-id", 
+    chunk_size=32 * 1024 * 1024, 
+    workers=8, 
+    retries=3
+):
     """
-    Downloads a file from a URL and uploads it directly to a GCP bucket in chunks concurrently, without saving locally.
+    Downloads a file from a URL and uploads it directly to a GCP bucket with retry logic.
 
     Parameters:
     - url_base (str): The base URL where the file is located.
     - url_suffix (str): The part of the URL that specifies the file to be downloaded.
     - bucket_name (str): The GCP bucket name where the file will be uploaded.
     - dataset_name (str): The name of the dataset being processed.
+    - destination_name (str): The name of the destination blob in the bucket.
     - chunk_size (int): The size of each chunk in bytes for concurrent uploading.
     - workers (int): The number of concurrent workers for the upload.
+    - retries (int): The number of retry attempts for failed downloads.
     """
-    try:
-        # Full URL of the file
-        full_url = url_base + url_suffix
+    attempt = 0
+    while attempt < retries:
+        try:
+            # Full URL of the file
+            full_url = url_base + url_suffix
 
-        # Generate dynamic blob name
-        #destination_blob_name = generate_dynamic_blob_name(dataset_name, url_suffix)
-        destination_blob_name = dataset_name
+            # Generate dynamic blob name
+            destination_blob_name = destination_name
 
-        # Initialize the GCP storage client and the bucket
-        client = storage.Client()
-        bucket = client.bucket(bucket_name)
-        blob = bucket.blob(destination_blob_name)
+            # Initialize the GCP storage client and the bucket
+            client = storage.Client(project=project_id)  # Specify the project ID
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(destination_blob_name)
 
-        print(f"Downloading from {full_url} and uploading directly to GCP bucket: {bucket_name}/{destination_blob_name}")
+            print(f"Downloading from {full_url} and uploading directly to GCP bucket: {bucket_name}/{destination_blob_name}")
 
-        # Stream the data from the URL and use a custom upload handler with concurrent chunking
-        with urllib.request.urlopen(full_url) as response:
-            storage.transfer_manager.upload_chunks_concurrently(
-                blob, response, chunk_size=chunk_size, max_workers=workers
-            )
+            # Stream data from the URL and upload it
+            with urllib.request.urlopen(full_url) as response:
+                data = response.read()  # Read the entire file into memory
+                blob.upload_from_file(BytesIO(data))  # Upload data using BytesIO as a file-like object
 
-        print(f"File successfully uploaded to GCP bucket: {bucket_name}/{destination_blob_name}")
+            print(f"File successfully uploaded to GCP bucket: {bucket_name}/{destination_blob_name}")
+            return  # Exit the function if successful
 
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
+        except (IncompleteRead, urllib.error.URLError) as e:
+            attempt += 1
+            print(f"Attempt {attempt}/{retries} failed: {str(e)}. Retrying...")
+
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            raise  # Raise non-retryable exceptions
+
+    # If all retries fail, raise an exception
+    raise Exception(f"Failed to download {url_suffix} after {retries} attempts.")
 
 
 def extract_rar(file_path, output_dir):
@@ -127,39 +150,3 @@ def extract_rar(file_path, output_dir):
         print(f"Extraction successful! Files extracted to: {file_path[:-4]}")
     except Exception as e:
         print(f"An error occurred during extraction: {str(e)}")
-
-def download_chunks_concurrently(
-    bucket_name, blob_name, filename, chunk_size=32 * 1024 * 1024, workers=8):
-    """Download a single file in chunks, concurrently in a process pool."""
-
-    # The ID of your GCS bucket
-    # bucket_name = "your-bucket-name" vittogcp-bucket01-ds
-
-    # The file to be downloaded
-    # blob_name = "target-file"
-
-    # The destination filename or path
-    # filename = ""
-
-    # The size of each chunk. The performance impact of this value depends on
-    # the use case. The remote service has a minimum of 5 MiB and a maximum of
-    # 5 GiB.
-    # chunk_size = 32 * 1024 * 1024 (32 MiB)
-
-    # The maximum number of processes to use for the operation. The performance
-    # impact of this value depends on the use case, but smaller files usually
-    # benefit from a higher number of processes. Each additional process occupies
-    # some CPU and memory resources until finished. Threads can be used instead
-    # of processes by passing `worker_type=transfer_manager.THREAD`.
-    # workers=8
-
-
-    storage_client = Client()
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-
-    transfer_manager.download_chunks_concurrently(
-        blob, filename, chunk_size=chunk_size, max_workers=workers
-    )
-
-    print("Downloaded {} to {}.".format(blob_name, filename))

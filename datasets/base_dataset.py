@@ -65,7 +65,7 @@ class BaseDataset(ABC):
         dirname = self.rawfilesdir
         if not os.path.isdir(dirname):
             os.mkdir(dirname)
-        print(f"Stating download of {self} dataset.")
+        print(f"Stating download of {self.__class__.__name__} dataset.")
         list_of_bearings = self.list_of_bearings()
         dataset_name = self.__class__.__name__.lower()
         unit = '.mat'
@@ -75,7 +75,7 @@ class BaseDataset(ABC):
             sufix_url = bearing[1]
             output_path = os.path.join('data/raw', dataset_name, bearing[0]+unit)
             if not os.path.exists(os.path.join(dirname, sufix_url)): 
-                download_file_toGCP(url, sufix_url, bucket_name="vittogcp-bucket01-ds", dataset_name=self.dataset_name)                
+                download_file_toGCP(url, sufix_url, bucket_name="vittogcp-bucket01-ds", dataset_name=dataset_name,destination_name=f"{dataset_name}/{bearing[0]}{unit}", project_id="transferlearncwru01")                
         print("Download finished.")
 
 
