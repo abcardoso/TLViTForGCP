@@ -60,6 +60,7 @@ def run_experimenter():
 
 
 if __name__ == '__main__':
+    print("Study: Enhancing Bearing Fault Diagnosis with Vision Transformers: Addressing Similarity Bias through Spectrograms")
     download()
     #create_spectrograms()
     #run_experimenter()
