@@ -184,7 +184,7 @@ def one_fold_without_bias(model, dataset, num_epochs, lr, class_names):
     #print(dataset.get_dataset_name())
     print_confusion_matrix(cm, class_names, all_labels, all_predictions)
     
-def kfold_cross_validation(model, test_loader, num_epochs, lr, group_by="", class_names=[], n_splits=4):
+def kfold_cross_validation(model, test_loader, num_epochs, lr, group_by="", class_names=[], n_splits=4, project_id="project_id"):
     """Performs K-Fold Cross-Validation for ViT models with optional grouping on the provided dataset."""
     batch_size = 32
     dataset = test_loader.dataset
@@ -335,13 +335,14 @@ def kfold_cross_validation(model, test_loader, num_epochs, lr, group_by="", clas
         for class_id, sample_idx in class_sample_indices.items():
             if sample_idx is not None:
                 print(f"Visualizing attention for class '{class_names[class_id]}' (index {sample_idx})...")
-                visualize_attention(
+                visualize_attention_gcp(
                     dataset=dataset,
                     model=model,
                     idx=sample_idx,
                     attentions=None,  # Let visualize_attention compute attentions
                     head=0,  # Visualize first attention head
-                    layer=-1  # Visualize last attention layer
+                    layer=-1,  # Visualize last attention layer
+                    project_id=project_id
                 )
 
         # Check if there are predictions to evaluate
@@ -537,3 +538,53 @@ def visualize_attention(dataset, model, idx, attentions, head=0, layer=-1):
     plt.show()
     plt.close(fig)  # Explicitly close the figure to free memory
     print(f"Saved attention visualization to {file_name}")
+        
+def visualize_attention_gcp(dataset, model, idx, attentions, head=0, layer=-1, credentials_path=None, project_id=None):
+    """
+    Visualize attention maps for a spectrogram and save the results to a GCP bucket.
+    """
+    # Initialize GCP storage client
+    storage_client = storage.Client.from_service_account_file(credentials_path) if credentials_path else storage.Client()
+    bucket_logs = "vittogcp-bucket01-logs"
+    bucket = storage_client.bucket(bucket_logs)
+
+    # Retrieve spectrogram and label
+    spectrogram, label = dataset[idx]
+    class_mapping = {0: 'B', 1: 'N', 2: 'O', 3: 'I'}
+    class_name = class_mapping.get(label, "Unknown")
+    image_tensor = spectrogram.unsqueeze(0).to(model.device)
+
+    # Forward pass
+    logits, attentions = model(image_tensor)
+    if attentions is None or layer >= len(attentions):
+        print(f"Attention output is None or invalid for layer {layer}.")
+        return
+
+    # Process attention
+    attention_map = attentions[layer][0, head, :, :]
+    aggregated_attention = attention_map.mean(dim=0).detach().cpu().numpy()
+    height, width = image_tensor.shape[-2], image_tensor.shape[-1]
+    attention_resized = cv2.resize(aggregated_attention, (width, height), interpolation=cv2.INTER_LINEAR)
+    attention_resized = (attention_resized - attention_resized.min()) / (attention_resized.max() - attention_resized.min())
+
+    # Visualization
+    fig, axs = plt.subplots(1, 2, figsize=(18, 8))
+    axs[0].imshow(spectrogram.cpu().numpy(), cmap="jet", aspect="auto")
+    axs[0].set_title("Spectrogram")
+    axs[1].imshow(attention_resized, cmap="plasma", aspect="auto")
+    axs[1].set_title("Attention Map")
+
+    # Save to GCP
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    log_folder = "visualizations"
+    filename = f"{log_folder}/experiment_log_{timestamp}_{class_name}_{idx}.png"
+    blob = bucket.blob(filename)
+
+    # Save plot to BytesIO and upload
+    image_stream = BytesIO()
+    plt.savefig(image_stream, format='png', bbox_inches='tight', pad_inches=0)
+    image_stream.seek(0)
+    blob.upload_from_file(image_stream, content_type="image/png")
+
+    print(f"Saved attention visualization to {bucket_logs}/{filename}")
+    plt.close(fig)    

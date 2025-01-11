@@ -1,1 +1,1 @@
-from .generate_spectrogram import generate_spectrogram
+from .generate_spectrogram import generate_spectrogram, generate_spectrogram_GCP

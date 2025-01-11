@@ -1,6 +1,7 @@
-import scipy.io
+import scipy.io 
 import os
 import numpy as np
+from io import BytesIO
 from utils.download_extract import download_file
 from datasets.base_dataset import BaseDataset
 
@@ -119,6 +120,38 @@ class UORED(BaseDataset):
             return data[:self.acquisition_maxsize], label
         else:
             return data, label
+
+    def _extract_data_GCP(self, file_stream, filename):
+        """
+        Extracts data and label from a .mat file loaded from GCP (BytesIO object).
+
+        Parameters:
+        - file_stream (BytesIO): The file content as a BytesIO object.
+
+        Returns:
+        - tuple: (data, label)
+        """
+
+        try:
+            # Load the .mat file from the stream
+            file_stream.seek(0)  # Ensure the stream starts at the beginning
+            matlab_file = scipy.io.loadmat(file_stream)
+
+            # Use the provided filename to retrieve metadata
+            file_info = list(filter(lambda x: x["filename"] == filename, self.annotation_file))[0]
+
+            # Extract label and data
+            label = file_info["label"]
+            data = matlab_file[filename][:, 0]
+
+            # Trim the data if acquisition_maxsize is defined
+            if self.acquisition_maxsize:
+                return data[:self.acquisition_maxsize], label
+            return data, label
+        except KeyError as e:
+            raise ValueError(f"KeyError: Unable to locate data for key '{filename}' in the .mat file. Error: {e}")
+        except Exception as e:
+            raise ValueError(f"An error occurred while extracting data from GCP file stream: {e}")
 
     def __str__(self):
         return "UORED"

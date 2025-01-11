@@ -1,12 +1,16 @@
 import torch
 import os
 import copy
+from PIL import Image  # For loading and processing images
+from torch.utils.data import TensorDataset  # For creating a PyTorch dataset with tensors
+from io import StringIO, BytesIO
+from google.cloud import storage
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, ConcatDataset
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from src.models import CNN2D, ViTClassifier, ResNet18, DeiTClassifier
-from src.models.vitclassifier import train_and_save, load_trained_model
+from src.models.vitclassifier import train_and_save, load_trained_model, train_and_save_gcp, load_trained_model_gcp
 from scripts.evaluate_model_vitclassifier import kfold_cross_validation, resubstitution_test, one_fold_with_bias, one_fold_without_bias, evaluate_full_model
 
 import sys
@@ -63,7 +67,7 @@ def enforce_consistent_mapping(datasets, desired_class_to_idx):
             dataset.classes = list(desired_class_to_idx.keys())
     print("[info] Mappings enforced successfully.")
 
-def experimenter_vitclassifier_kfold(use_vit=True, pretrain_model=False, base_model=True):
+def experimenter_vitclassifier_kfold(use_vit=True, pretrain_model=False, base_model=True, project_id="project_id", bucket_savedmodels="bucket_savedmodels", bucket_spectrogram="bucket_spectrogram"):
     
     # Toggle between use the pre-trained saved model or pre-train it
     # pretrain_model = True
@@ -82,6 +86,10 @@ def experimenter_vitclassifier_kfold(use_vit=True, pretrain_model=False, base_mo
     # Class-to-index mapping
     class_to_idx = {'B': 0, 'I': 1, 'N': 2, 'O': 3}
     
+        # Initialize GCP client
+    storage_client = storage.Client(project=project_id)
+    bucket = storage_client.bucket(bucket_spectrogram)
+    
     # Load datasets
     train_datasets_name = ["CWRU"]
     test_datasets_name = ["UORED"]
@@ -93,9 +101,9 @@ def experimenter_vitclassifier_kfold(use_vit=True, pretrain_model=False, base_mo
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
      
-    # Load train and test datasets
-    train_datasets = [ImageFolder(os.path.join(root_dir, ds.lower()), transform) for ds in train_datasets_name]
-    test_datasets = [ImageFolder(os.path.join(root_dir, ds.lower()), transform) for ds in test_datasets_name]
+    # Load datasets from GCP
+    train_datasets = [load_images_from_gcp(bucket, ds, class_to_idx, transform) for ds in train_datasets_name]
+    test_datasets = [load_images_from_gcp(bucket, ds, class_to_idx, transform) for ds in test_datasets_name]
 
     # Enforce consistent mapping
     enforce_consistent_mapping(train_datasets, class_to_idx)
@@ -153,11 +161,26 @@ def experimenter_vitclassifier_kfold(use_vit=True, pretrain_model=False, base_mo
         if pretrain_model: 
             model = model_class().to("cuda")
             print("Pre-training according request.")
-            train_and_save(model, pretrain_train_loader, pretrain_eval_loader, num_epochs_vit_train, lr_vit_train, saved_model_path)
+            train_and_save_gcp(
+                model=model,
+                train_loader=pretrain_train_loader,
+                eval_loader=pretrain_eval_loader,
+                num_epochs=num_epochs_vit_train,
+                lr=lr_vit_train,
+                bucket_name=bucket_savedmodels,
+                model_name=saved_model_path,
+                project_id=project_id
+            )
         else:
             print("No Pre-training started, using a pre-train saved file.")
             # Load the trained model for testing/evaluation
-            model = load_trained_model(model_class, saved_model_path, num_classes=len(class_to_idx)).to("cuda")
+            model = load_trained_model_gcp(
+                    model_class=model_class,
+                    bucket_name=bucket_savedmodels,
+                    model_name=saved_model_path,
+                    num_classes=len(class_to_idx),
+                    project_id=project_id
+                ).to("cuda")
     else:
         initial_state = copy.deepcopy(model.state_dict())
         model.load_state_dict(copy.deepcopy(initial_state))
@@ -205,10 +228,44 @@ def experimenter_vitclassifier_kfold(use_vit=True, pretrain_model=False, base_mo
         lr, 
         group_by, 
         class_names = list(class_to_idx.keys()), 
-        n_splits=4)
+        n_splits=4,
+        project_id=project_id)
+
+def load_images_from_gcp(bucket, dataset_name, class_to_idx, transform):
+    """
+    Load spectrogram images from GCP bucket as a PyTorch dataset.
+    """
+    data = []
+    labels = []
+
+    prefix = f"data/spectrograms/{dataset_name.lower()}/"
+    blobs = bucket.list_blobs(prefix=prefix)
+
+    for blob in blobs:
+        if blob.name.endswith(".png"):
+            # Extract class name from blob path
+            class_name = blob.name.split('/')[-2]
+            if class_name in class_to_idx:
+                # Download blob to memory
+                image_stream = BytesIO()
+                blob.download_to_file(image_stream)
+                image_stream.seek(0)
+
+                # Load image and apply transformations
+                image = Image.open(image_stream).convert("RGB")
+                image = transform(image)
+
+                # Append image and label
+                data.append(image)
+                labels.append(class_to_idx[class_name])
+
+    return TensorDataset(torch.stack(data), torch.tensor(labels))
 
 def run_experimenter():     
     experimenter_vitclassifier_kfold()
+
+
+
 
 if __name__ == "__main__":
     #sys.stdout = LoggerWriter(logging.info, "kfold-vitclassifier")

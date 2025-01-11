@@ -1,5 +1,5 @@
 from scripts.download_rawfile import download_rawfile
-from scripts.spectrograms import generate_spectrogram
+from scripts.spectrograms import generate_spectrogram, generate_spectrogram_GCP
 from scripts.copy_spectrogram_to_folds import copy_spectrogram_to_folds
 from src.data_processing.dataset_manager import DatasetManager
 from utils import load_yaml
@@ -9,17 +9,53 @@ from run_pretrain import experimenter
 import sys
 from datetime import datetime
 import os
+from google.cloud import storage
+from io import StringIO
+from google.oauth2 import service_account
+
+
+class GCPLogger:
+    def __init__(self, bucket_name, log_filename, project_id=None):
+        """
+        GCP Logger to write logs to a Google Cloud Storage bucket.
+
+        Parameters:
+        - bucket_name (str): Name of the GCP bucket for storing logs.
+        - log_filename (str): Name of the log file to store.
+        - project_id (str): Project ID for the GCP client (optional).
+        """
+        # Initialize the GCP storage client using Application Default Credentials (ADC)
+        storage_client = storage.Client(project=project_id)
+        self.bucket = storage_client.bucket(bucket_name)
+        self.log_filename = log_filename
+        self.log_buffer = StringIO()
+
+    def write(self, message):
+        """Write log messages to the buffer and stdout."""
+        self.log_buffer.write(message)
+        sys.__stdout__.write(message)
+
+    def flush(self):
+        """Upload log buffer content to GCP bucket."""
+        blob = self.bucket.blob(self.log_filename)
+        blob.upload_from_string(self.log_buffer.getvalue(), content_type="text/plain")
+        self.log_buffer.seek(0)
+
+
 
 # Create logs directory if it doesn't exist
 os.makedirs("results", exist_ok=True)
 
-# Generate a timestamped log file name
-timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-log_filename = f"results/experiment_log_{timestamp}.txt"
+project_id = "transferlearncwru01" 
+bucket_ds = "vittogcp-bucket01-ds"
+bucket_spectrogram = "vittogcp-bucket01-spectrogram"
+bucket_logs = "vittogcp-bucket01-logs"
+bucket_savedmodels = "vittogcp-bucket01-savedmodels"
 
 # Redirect stdout
-sys.stdout = DualOutput(log_filename)
-
+timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+log_filename = f"results/experiment_log_{timestamp}.txt"
+sys.stdout = GCPLogger(bucket_logs, log_filename, project_id=project_id)
 
 # DOWNLOAD RAW FILES
 def download():
@@ -47,25 +83,25 @@ def create_spectrograms():
         spectrogram_setup = spectrogram_config[dataset_name]["Spectrogram"]
         
         # Creation of spectrograms    
-        generate_spectrogram(metainfo, spectrogram_setup, signal_length, num_segments) 
+        generate_spectrogram_GCP(metainfo, spectrogram_setup, signal_length, num_segments, project_id=project_id, bucket_ds=bucket_ds, bucket_spectrogram=bucket_spectrogram) 
 
 # EXPERIMENTERS
 def run_experimenter():
     #model = ResNet18() 
-    use_vit = False #ViT or DeiT
+    use_vit = True #ViT or DeiT
     pretrain_model=False # pretrain or use saved 
     base_model=True # base model with no pre-train strategy
     
-    experimenter_vitclassifier_kfold(use_vit, pretrain_model, base_model) #pre train and test
+    experimenter_vitclassifier_kfold(use_vit, pretrain_model, base_model, project_id=project_id, bucket_savedmodels=bucket_savedmodels, bucket_spectrogram=bucket_spectrogram) #pre train and test
 
 
 if __name__ == '__main__':
-    print("Study: Enhancing Bearing Fault Diagnosis with Vision Transformers: Addressing Similarity Bias through Spectrograms")
-    download()
-    #create_spectrograms()
-    #run_experimenter()
-    
-    
-    # Close the log file
-    sys.stdout.close()
-    sys.stdout = sys.__stdout__  # Reset stdout to the original
+    try:
+        print("Study: Enhancing Bearing Fault Diagnosis with Vision Transformers: Addressing Similarity Bias through Spectrograms")
+        #download()
+        #create_spectrograms()
+        run_experimenter()
+    finally:
+        # Close the log file
+        sys.stdout.flush()
+        sys.stdout = sys.__stdout__  # Reset stdout to the original

@@ -83,6 +83,10 @@ class BaseDataset(ABC):
         signal, label = self._extract_data(filepath)
         return signal, label
     
+    def load_signal_by_path_GCP(self, file_stream, filename):
+        signal, label = self._extract_data_GCP(file_stream, filename)
+        return signal, label
+    
     def load_signal(self, regex_filter=r'.*\.mat$'):
         """ Load vibration signal data from .mat files, filtered by a regex. 
         Args:
@@ -112,6 +116,13 @@ class BaseDataset(ABC):
     @classmethod
     @abstractmethod
     def _extract_data(self, filepath):
+        """ This method is responsible for extracting data from a bearing fault dataset in a .mat file.
+        Returns:
+            tuple: A tuple containing (data, label), where 'data' is the extracted dataset and 'label' is the corresponding label.
+        """
+        pass
+    
+    def _extract_data_GCP(self, file_stream, filename):
         """ This method is responsible for extracting data from a bearing fault dataset in a .mat file.
         Returns:
             tuple: A tuple containing (data, label), where 'data' is the extracted dataset and 'label' is the corresponding label.

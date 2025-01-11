@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from google.cloud import storage
+from io import StringIO, BytesIO
 from transformers import ViTForImageClassification, ViTConfig, ViTImageProcessor, DeiTForImageClassification, DeiTImageProcessor, AutoFeatureExtractor
 from torchvision.transforms import ToPILImage
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
@@ -170,6 +172,85 @@ def train_and_save(model, train_loader, eval_loader, num_epochs, lr=0.001, save_
     print("Training completed successfully." if patience_counter < patience else "Training stopped early.")
     return results
 
+def train_and_save_gcp(
+    model, train_loader, eval_loader, num_epochs, lr=0.001, 
+    bucket_name="bucket_name", model_name="model_name", 
+    credentials_path=None, project_id=None
+):
+    """
+    Train and save a model directly to a GCP bucket.
+
+    Parameters:
+    - model: The model to be trained.
+    - train_loader: DataLoader for training data.
+    - eval_loader: DataLoader for evaluation data.
+    - num_epochs (int): Number of training epochs.
+    - lr (float): Learning rate for the optimizer.
+    - bucket_name (str): GCP bucket name for saving the model.
+    - model_name (str): Name of the model file to save.
+    - credentials_path (str): Path to GCP credentials JSON file.
+    - project_id (str): Google Cloud project ID.
+
+    Returns:
+    - results (dict): Training results with metrics.
+    """
+    # Train the model and save locally in memory (BytesIO)
+    model_buffer = BytesIO()
+    results = train_and_save(model, train_loader, eval_loader, num_epochs, lr, save_path=model_buffer)
+    model_buffer.seek(0)  # Reset buffer to the beginning for upload
+
+    # Initialize GCP storage client
+    client_options = {"project": project_id}
+    if credentials_path:
+        from google.oauth2 import service_account
+        client_options["credentials"] = service_account.Credentials.from_service_account_file(credentials_path)
+    storage_client = storage.Client(**client_options)
+
+    # Upload the model directly from memory
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(f"saved_models/{model_name}")
+    blob.upload_from_file(model_buffer, content_type="application/octet-stream")
+    print(f"Model saved to GCP bucket: {bucket_name}/saved_models/{model_name}")
+
+    return results
+
+def load_trained_model_gcp(
+    model_class, bucket_name, model_name, 
+    num_classes=4, credentials_path=None, project_id=None
+):
+    """
+    Load a trained model directly from a GCP bucket.
+
+    Parameters:
+    - model_class: The class of the model to instantiate.
+    - bucket_name (str): GCP bucket name where the model is stored.
+    - model_name (str): Name of the model file to load.
+    - num_classes (int): Number of output classes for the model.
+    - credentials_path (str): Path to GCP credentials JSON file.
+    - project_id (str): Google Cloud project ID.
+
+    Returns:
+    - model: The loaded model.
+    """
+    # Initialize GCP storage client
+    client_options = {"project": project_id}
+    if credentials_path:
+        from google.oauth2 import service_account
+        client_options["credentials"] = service_account.Credentials.from_service_account_file(credentials_path)
+    storage_client = storage.Client(**client_options)
+
+    # Download model directly to memory
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(f"saved_models/{model_name}")
+    model_buffer = BytesIO()
+    blob.download_to_file(model_buffer)
+    model_buffer.seek(0)  # Reset buffer to the beginning for loading
+
+    # Load the model from the memory buffer
+    model = load_trained_model(model_class, model_buffer, num_classes=num_classes)
+    print(f"Model loaded from GCP bucket: {bucket_name}/saved_models/{model_name}")
+
+    return model
 
 # To reload the trained model later
 def load_trained_model(model_class, save_path, num_classes=4):
