@@ -20,4 +20,3 @@ data/**/**/*.png
 results/
 logs/
 .vscode/launch.json
-Miniconda3-latest-Linux-x86_64.sh
