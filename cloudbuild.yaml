@@ -1,5 +1,31 @@
 steps:
+  # Step 1: Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'us-central1-docker.pkg.dev/transferlearncwru01/vit-repo/tlvitforgcp:latest', '.']
+
+  # Step 2: Push the Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-central1-docker.pkg.dev/transferlearncwru01/vit-repo/tlvitforgcp:latest']
+
+  # Step 3: Deploy the image to Cloud Run 
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'cr-tlvitforgcp'  # Cloud Run service name
+      - '--image'
+      - 'us-central1-docker.pkg.dev/transferlearncwru01/vit-repo/tlvitforgcp:latest'
+      - '--platform'
+      - 'managed'
+      - '--region'
+      - 'us-central1'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '16Gi'       # Allocating 16 GiB of memory
+      - '--cpu'
+      - '4'          # Allocating 4 CPUs for compute
+      - '--timeout'
+      - '300'        # Set timeout in seconds
+
 images:
   - 'us-central1-docker.pkg.dev/transferlearncwru01/vit-repo/tlvitforgcp:latest'
