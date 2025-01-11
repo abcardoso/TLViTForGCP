@@ -3,9 +3,9 @@ steps:
     args: ['build', '-t', 'us-central1-docker.pkg.dev/transferlearncwru01/vit-repo/tlvitforgcp:latest', '.']
 images:
   - 'us-central1-docker.pkg.dev/transferlearncwru01/vit-repo/tlvitforgcp:latest'
-
-
-
+options:
+  logging: CLOUD_LOGGING_ONLY
+  logs_bucket: gs://transferlearncwru01_cloudbuild
 
 
 # steps:
