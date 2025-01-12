@@ -97,7 +97,12 @@ def run_experimenter():
 
 if __name__ == '__main__':
     try:
+        # Listen on the port defined by the PORT environment variable
+        port = int(os.environ.get("PORT", 8080))
+        app.run(host="0.0.0.0", port=port)
+
         print("Study: Enhancing Bearing Fault Diagnosis with Vision Transformers: Addressing Similarity Bias through Spectrograms")
+        
         #download()
         #create_spectrograms()
         run_experimenter()
