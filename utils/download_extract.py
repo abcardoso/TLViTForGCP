@@ -1,5 +1,7 @@
 import os
 import urllib.request
+import hashlib
+from datetime import datetime
 from io import BytesIO
 from pyunpack import Archive
 from google.cloud import storage
